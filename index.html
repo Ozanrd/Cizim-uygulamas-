@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gelişmiş Çizim Uygulaması</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #10141a; color: #f0f4fa; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        
+        #top-bar { height: 40px; background-color: #1a202a; border-bottom: 1px solid #2a3444; display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 10; }
+        .btn { background-color: #242c3a; color: #f0f4fa; border: 1px solid #2a3444; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+        .btn:hover { background-color: #303a4c; }
+        .btn.active { background-color: #3482f6; color: white; border-color: #3482f6; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        .btn-danger:hover { background-color: #bd2130; }
+
+        #main-container { flex: 1; display: flex; position: relative; overflow: hidden; }
+        .panel { background-color: #1a202a; border-color: #2a3444; display: flex; flex-direction: column; padding: 10px; gap: 8px; z-index: 5; }
+        #left-panel { width: 150px; border-right: 1px solid #2a3444; }
+        #right-panel { width: 180px; border-left: 1px solid #2a3444; }
+        .panel-title { font-size: 11px; font-weight: bold; color: #828ea0; margin-top: 5px; }
+
+        #workspace { flex: 1; background-color: #10141a; display: flex; justify-content: center; align-items: center; position: relative; overflow: hidden; }
+        #canvas-container { position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5); background-color: white; }
+        canvas { position: absolute; top: 0; left: 0; touch-action: none; }
+
+        #color-preview { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #2a3444; cursor: pointer; margin: 5px auto; background-color: #3482f6; }
+
+        #layers-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; margin-top: 5px; }
+        .layer-item { background-color: #242c3a; border: 1px solid #2a3444; border-radius: 6px; padding: 6px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 12px; }
+        .layer-item.active { background-color: #3482f6; color: white; }
+        .layer-item .eye-btn { cursor: pointer; padding: 2px 5px; }
+
+        .popup { position: absolute; background-color: #1a202a; border: 1px solid #2a3444; border-radius: 8px; padding: 12px; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.4); z-index: 20; }
+        #thickness-popup { top: 180px; left: 155px; width: 180px; }
+        #color-popup { top: 240px; left: 155px; }
+        #canvas-popup { top: 45px; left: 10px; width: 180px; display: none; flex-direction: column; gap: 6px; }
+
+        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #3482f6; color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
+    </style>
+</head>
+<body>
+
+    <div id="top-bar">
+        <button class="btn" onclick="togglePopup('canvas-popup')">📁 Kanvas / Dışa Aktar</button>
+        <div id="canvas-popup" class="popup">
+            <button class="btn" onclick="resetCanvas(870, 710)">Yeni (Varsayılan)</button>
+            <button class="btn" onclick="resetCanvas(1280, 720)">Yeni (1280x720 HD)</button>
+            <button class="btn" onclick="exportImage('png')">💾 PNG Aktar</button>
+            <button class="btn" onclick="exportImage('jpg')">💾 JPG Aktar</button>
+        </div>
+    </div>
+
+    <div id="main-container">
+        <div id="left-panel" class="panel">
+            <div class="panel-title">FIRÇALAR</div>
+            <button class="btn active" id="btn-monoline" onclick="setBrush('monoline')">— Monoline</button>
+            <button class="btn" id="btn-dokulu" onclick="setBrush('dokulu')">〰 Dokulu</button>
+            <button class="btn" id="btn-cizgi" onclick="setBrush('cizgi')">📏 Çizgi</button>
+            <button class="btn" id="btn-hava" onclick="setBrush('hava')">💨 Hava (Soft)</button>
+
+            <div class="panel-title">KALINLIK</div>
+            <button class="btn" onclick="togglePopup('thickness-popup')">⚙ <span id="thickness-val">12</span> px</button>
+
+            <div class="panel-title">RENK</div>
+            <div id="color-preview" onclick="togglePopup('color-popup')"></div>
+        </div>
+
+        <div id="workspace">
+            <div id="canvas-container">
+                <canvas id="preview-canvas"></canvas>
+            </div>
+        </div>
+
+        <div id="right-panel" class="panel">
+            <div class="panel-title">KATMANLAR</div>
+            <div style="display: flex; gap: 5px;">
+                <button class="btn" style="flex:1" onclick="addLayer()">+ Yeni</button>
+                <button class="btn btn-danger" onclick="deleteLayer()">🗑 Sil</button>
+            </div>
+            <div id="layers-list"></div>
+        </div>
+    </div>
+
+    <div id="thickness-popup" class="popup">
+        <div style="font-size:11px; margin-bottom: 8px;">Fırça Kalınlığı</div>
+        <input type="range" id="thickness-slider" min="1" max="60" value="12" style="width:100%" oninput="updateThickness(this.value)">
+    </div>
+
+    <div id="color-popup" class="popup">
+        <input type="color" id="color-picker" value="#3482f6" onchange="updateColor(this.value)" style="width:80px; height:80px; border:none; cursor:pointer; background:none;">
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        let width = 870, height = 710;
+        let brushType = 'monoline';
+        let brushSize = 12;
+        let brushColor = '#3482f6';
+        let layers = [];
+        let activeLayerIndex = 0;
+        let isDrawing = false;
+        let startX = 0, startY = 0;
+        let prevX = 0, prevY = 0;
+
+        const container = document.getElementById('canvas-container');
+        const previewCanvas = document.getElementById('preview-canvas');
+        const previewCtx = previewCanvas.getContext('2d');
+
+        function init() {
+            resetCanvas(width, height);
+            updateColor(brushColor);
+            setupDrawingEvents();
+        }
+
+        function resetCanvas(w, h) {
+            width = w; height = h;
+            container.style.width = w + 'px';
+            container.style.height = h + 'px';
+            previewCanvas.width = w;
+            previewCanvas.height = h;
+
+            layers = [];
+            document.getElementById('layers-list').innerHTML = '';
+            addLayer(true);
+            hidePopups();
+            showToast("Yeni Kanvas Oluşturuldu");
+        }
+
+        function addLayer(isBackground = false) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            if (isBackground) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            const layer = {
+                id: Date.now(),
+                name: 'Katman ' + (layers.length + 1),
+                canvas: canvas,
+                ctx: ctx,
+                visible: true
+            };
+
+            layers.push(layer);
+            container.insertBefore(canvas, previewCanvas);
+            setActiveLayer(layers.length - 1);
+            renderLayerUI();
+        }
+
+        function deleteLayer() {
+            if (layers.length <= 1) return;
+            container.removeChild(layers[activeLayerIndex].canvas);
+            layers.splice(activeLayerIndex, 1);
+            setActiveLayer(Math.max(0, activeLayerIndex - 1));
+            renderLayerUI();
+        }
+
+        function setActiveLayer(index) {
+            activeLayerIndex = index;
+            renderLayerUI();
+        }
+
+        function toggleLayerVisibility(index, event) {
+            event.stopPropagation();
+            layers[index].visible = !layers[index].visible;
+            layers[index].canvas.style.display = layers[index].visible ? 'block' : 'none';
+            renderLayerUI();
+        }
+
+        function renderLayerUI() {
+            const list = document.getElementById('layers-list');
+            list.innerHTML = '';
+            for (let i = layers.length - 1; i >= 0; i--) {
+                const item = document.createElement('div');
+                item.className = 'layer-item' + (i === activeLayerIndex ? ' active' : '');
+                item.onclick = () => setActiveLayer(i);
+                
+                const eye = document.createElement('span');
+                eye.className = 'eye-btn';
+                eye.innerText = layers[i].visible ? '👁' : '🙈';
+                eye.onclick = (e) => toggleLayerVisibility(i, e);
+
+                const title = document.createElement('span');
+                title.innerText = layers[i].name;
+
+                item.appendChild(eye);
+                item.appendChild(title);
+                list.appendChild(item);
+            }
+        }
+
+        function setBrush(type) {
+            brushType = type;
+            document.querySelectorAll('#left-panel .btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-' + type).classList.add('active');
+        }
+
+        function updateThickness(val) {
+            brushSize = parseInt(val);
+            document.getElementById('thickness-val').innerText = val;
+        }
+
+        function updateColor(val) {
+            brushColor = val;
+            document.getElementById('color-preview').style.backgroundColor = val;
+        }
+
+        function togglePopup(id) {
+            const el = document.getElementById(id);
+            const isVisible = el.style.display === 'flex' || el.style.display === 'block';
+            hidePopups();
+            if (!isVisible) {
+                el.style.display = (id === 'canvas-popup') ? 'flex' : 'block';
+            }
+        }
+
+        function hidePopups() {
+            document.querySelectorAll('.popup').forEach(p => p.style.display = 'none');
+        }
+
+        function getPos(e) {
+            const rect = previewCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function setupDrawingEvents() {
+            const start = (e) => {
+                if (!layers[activeLayerIndex].visible) return;
+                hidePopups();
+                isDrawing = true;
+                const pos = getPos(e);
+                startX = pos.x; startY = pos.y;
+                prevX = pos.x; prevY = pos.y;
+
+                if (brushType !== 'cizgi') {
+                    drawPoint(layers[activeLayerIndex].ctx, pos.x, pos.y);
+                }
+            };
+
+            const move = (e) => {
+                if (!isDrawing || !layers[activeLayerIndex].visible) return;
+                const pos = getPos(e);
+
+                if (brushType === 'cizgi') {
+                    previewCtx.clearRect(0, 0, width, height);
+                    previewCtx.beginPath();
+                    previewCtx.moveTo(startX, startY);
+                    previewCtx.lineTo(pos.x, pos.y);
+                    previewCtx.strokeStyle = brushColor;
+                    previewCtx.lineWidth = brushSize;
+                    previewCtx.lineCap = 'round';
+                    previewCtx.stroke();
+                } else {
+                    drawLine(layers[activeLayerIndex].ctx, prevX, prevY, pos.x, pos.y);
+                    prevX = pos.x; prevY = pos.y;
+                }
+            };
+
+            const stop = (e) => {
+                if (!isDrawing) return;
+                isDrawing = false;
+                if (brushType === 'cizgi') {
+                    const pos = e.changedTouches ? getPos(e.changedTouches[0]) : getPos(e);
+                    drawLine(layers[activeLayerIndex].ctx, startX, startY, pos.x, pos.y);
+                    previewCtx.clearRect(0, 0, width, height);
+                }
+            };
+
+            previewCanvas.addEventListener('mousedown', start);
+            previewCanvas.addEventListener('mousemove', move);
+            window.addEventListener('mouseup', stop);
+
+            previewCanvas.addEventListener('touchstart', start);
+            previewCanvas.addEventListener('touchmove', move);
+            window.addEventListener('touchend', stop);
+        }
+
+        function drawPoint(ctx, x, y) {
+            ctx.fillStyle = brushColor;
+            ctx.beginPath();
+            ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawLine(ctx, x1, y1, x2, y2) {
+            if (brushType === 'monoline' || brushType === 'cizgi') {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = brushColor;
+                ctx.lineWidth = brushSize;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+            } else if (brushType === 'dokulu') {
+                const dist = Math.hypot(x2 - x1, y2 - y1);
+                const steps = Math.max(1, Math.floor(dist));
+                for (let i = 0; i < steps; i++) {
+                    const t = i / steps;
+                    const cx = x1 + (x2 - x1) * t;
+                    const cy = y1 + (y2 - y1) * t;
+                    for (let j = 0; j < brushSize * 1.5; j++) {
+                        const rx = cx + (Math.random() - 0.5) * brushSize * 2;
+                        const ry = cy + (Math.random() - 0.5) * brushSize * 2;
+                        if (Math.hypot(rx - cx, ry - cy) <= brushSize / 2) {
+                            ctx.fillStyle = brushColor;
+                            ctx.fillRect(rx, ry, 1, 1);
+                        }
+                    }
+                }
+            } else if (brushType === 'hava') {
+                const dist = Math.hypot(x2 - x1, y2 - y1);
+                const steps = Math.max(1, Math.floor(dist / 2));
+                for (let i = 0; i < steps; i++) {
+                    const t = i / steps;
+                    const cx = x1 + (x2 - x1) * t;
+                    const cy = y1 + (y2 - y1) * t;
+                    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, brushSize);
+                    grad.addColorStop(0, hexToRgba(brushColor, 0.1));
+                    grad.addColorStop(1, hexToRgba(brushColor, 0));
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, brushSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        function hexToRgba(hex, alpha) {
+            let c = hex.replace('#', '');
+            if (c.length === 3) c = c.split('').map(x => x + x).join('');
+            const num = parseInt(c, 16);
+            return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
+        }
+
+        function exportImage(format) {
+            hidePopups();
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = width;
+            exportCanvas.height = height;
+            const ctx = exportCanvas.getContext('2d');
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+
+            layers.forEach(l => {
+                if (l.visible) ctx.drawImage(l.canvas, 0, 0);
+            });
+
+            const link = document.createElement('a');
+            const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
+            link.download = `cizim_${Date.now()}.${format}`;
+            link.href = exportCanvas.toDataURL(mime);
+            link.click();
+            showToast("Resim İndirildi (" + format.toUpperCase() + ")");
+        }
+
+        function showToast(text) {
+            const toast = document.getElementById('toast');
+            toast.innerText = text;
+            toast.style.opacity = '1';
+            setTimeout(() => toast.style.opacity = '0', 2500);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
